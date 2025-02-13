@@ -20,7 +20,7 @@ from langchain_google_vertexai import (
     VectorSearchVectorStore,
 )
 
-from prompt import SQL_SYS_PROMPT, LLM_SQL_SYS_PROMPT
+from prompt import LLM_SQL_SYS_PROMPT
 from IPython.display import Image, display
 
 
@@ -297,12 +297,6 @@ if __name__ == "__main__":
         "Was Broadcom's Cost of Goods Sold lower in 2020 Q2 compared to Q1?",
     ]
     
-    # for query in test_queries:
-    #     print("="*50)
-    #     print(f"Query: {query}")
-    #     result = agent.run(query)
-    #     print("Final Response:", result.content)
-        
     # single value query
     print("Single Value Query:")
     for query in sigle_value_query:
