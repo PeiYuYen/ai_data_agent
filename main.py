@@ -267,9 +267,10 @@ class Agent:
         end_state = self.graph.invoke(init_state)
         return end_state["final_answer"]
     
+agent = Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools)    
 if __name__ == "__main__":
     # 建立 Agent 物件
-    agent = Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools)
+    # agent = Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools)
 
     test_queries = [
         "What is Amazon's Revenue in 2022 Q1?",       # show 單一公司單一指標
