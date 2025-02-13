@@ -20,6 +20,9 @@ from langchain_google_vertexai import (
     VectorSearchVectorStore,
 )
 
+from prompt import SQL_SYS_PROMPT, LLM_SQL_SYS_PROMPT
+from IPython.display import Image, display
+
 
 ############################################
 # 1. 設定資料庫連線
@@ -180,12 +183,18 @@ class Agent:
         # LangGraph: 建立 StateGraph
         graph = StateGraph(state_schema=AgentState)
         graph.add_node("decide", self.decide_action)
+        graph.add_node("adjust_sql_query", self.adjust_sql_query)  # ✅ 新增 SQL 調整 Node
         graph.add_node("action", self.take_action)
         graph.add_node("generate_final_response", self.generate_final_response)  # ✅ 修正名稱避免衝突
         graph.add_node("end", lambda state: state)
 
         # 設定決策流程
-        graph.add_edge("decide", "action")
+        # graph.add_edge("decide", "action")
+        graph.add_conditional_edges(
+            "decide",
+            lambda state: "adjust_sql_query" if self.is_sql_query(state) else "action"
+        )
+        graph.add_edge("adjust_sql_query", "action")
         graph.add_edge("action", "generate_final_response")  # ✅ 修正名稱
         graph.add_edge("generate_final_response", "end")
 
@@ -200,6 +209,18 @@ class Agent:
             return {"query": query, "tools": [], "tool_results": [], "final_answer": "很抱歉，目前沒有對應的資料。"}
         return {"query": query, "tools": selected_tools, "tool_results": [], "final_answer": ""}
 
+    def is_sql_query(self, state: AgentState) -> bool:
+        """檢查是否需要 Call SQL tool 調整"""
+        return "sql_db_query" in state["tools"]
+    
+    def adjust_sql_query(self, state: AgentState) -> AgentState:
+        """調整 SQL Query，使其更加明確"""
+        query = state["query"]
+        adjusted_query = self.model.invoke(f"請將以下查詢轉換成具體且明確的 user query: {query}\n" + LLM_SQL_SYS_PROMPT).content
+        
+        print(f"Adjusted SQL query: {adjusted_query}\n")
+        return {"query": adjusted_query, "tools": state["tools"], "tool_results": [], "final_answer": ""}
+
     def take_action(self, state: AgentState) -> AgentState:
         """執行查詢工具"""
         query = state["query"]
@@ -208,7 +229,12 @@ class Agent:
         
         for name in tool_names:
             tool = self.tool_dict.get(name)
-            if tool:
+            if name in ["sql_db_query"]:
+                # user_query = SQL_SYS_PROMPT + query
+                tool_result = tool.run(query)
+                results.append(f"{name} tool reponse : {tool_result['structured_response']}")
+                
+            elif name in ["RAG_Search"]:
                 tool_result = tool.run(query)
                 results.append(f"=== Tool {name} 回傳 ===\n{tool_result}")
             else:
@@ -244,17 +270,59 @@ class Agent:
 if __name__ == "__main__":
     # 建立 Agent 物件
     agent = Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools)
-    
-    test_queries = [
-        "show the Revenue of Amazon in 2020 Q1.",       # show 單一公司單一指標
-        "show the `Revenue`, `Tax Expense`, `Operating Expense` of Amazon in 2020 Q1.",     # show 單一公司所有指標
-        "show the all content of Amazon in 2020 Q1?",     # show 單一公司多指標
-        "Find Amazon's 2020 Q1 earnings call insights.",
-        "Show both 2020 Amazon Q1 revenue and future outlook."
-    ]   
 
-    for query in test_queries:
+    test_queries = [
+        "What is Amazon's Revenue in 2022 Q1?",       # show 單一公司單一指標
+        "show the `evenue`, `Tax Expense`, `Operating Expense` of Amazon in 2020 Q1.",     # show 單一公司多個指標
+        "show the `evenue`, `Taxespense`, `Operating Expense` of Amazon in 2020 Q1.",     # show 單一公司多個指標, 但語法錯誤
+        "show the all value of Amazon in 2020 Q1?",     # show 單一公司所有指標
+        # "Find Amazon's 2020 Q1 earnings call insights.",
+        # "Show both 2020 Amazon Q1 revenue and future outlook."
+    ]   
+    sigle_value_query = [
+        "What is Amazon's Revenue in 2022 Q1?",
+        "What is AMD's Operating Income in 2023 Q3?",
+    ]
+    trend_anlysis_query = [
+        "Did Intel's Gross Profit Margin increase in 2020 Q4?",
+        "Did Samsung's Operating Expense decrease in 2020 Q3?",
+    ]
+    
+    time_based_comparison_query = [
+        "Is Qualcomm's Total Asset in 2023 Q1 higher than in 2022 Q1?",
+        "Is TSMC's Operating Margin in 2021 Q2 higher than in 2020 Q2?",
+        "Is Microsoft's Tax Expense in 2024 Q1 lower than in 2023 Q4?",
+        "Is Google's Revenue in 2022 Q2 higher than in 2021 Q2?",
+        "Is Apple's Operating Income in 2021 Q1 higher than in 2020 Q1?",
+        "Was Broadcom's Cost of Goods Sold lower in 2020 Q2 compared to Q1?",
+    ]
+    
+    # for query in test_queries:
+    #     print("="*50)
+    #     print(f"Query: {query}")
+    #     result = agent.run(query)
+    #     print("Final Response:", result.content)
+        
+    # single value query
+    print("Single Value Query:")
+    for query in sigle_value_query:
         print("="*50)
         print(f"Query: {query}")
         result = agent.run(query)
-        print("Response:", result.content)
+        print("Final Response:", result.content)
+        
+    # trend analysis query
+    print("Trend Analysis Query:")
+    for query in trend_anlysis_query:
+        print("="*50)
+        print(f"Query: {query}")
+        result = agent.run(query)
+        print("Final Response:", result.content)
+        
+    # time based comparison query
+    print("Time Based Comparison Query:")
+    for query in time_based_comparison_query:
+        print("="*50)
+        print(f"Query: {query}")
+        result = agent.run(query)
+        print("Final Response:", result.content)
