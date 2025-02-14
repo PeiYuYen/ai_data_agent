@@ -37,6 +37,7 @@ def hash_password(password):
 
 def verify_password(password, hashed_password):
     return bcrypt.checkpw(password.encode(), hashed_password.encode())
+
 def save_user(username, password, role):
     """儲存使用者到 PostgreSQL"""
     hashed_pw = hash_password(password)  # 加密密碼
@@ -58,10 +59,14 @@ def authenticate_user(username, password):
     if result:
         hashed_pw, role = result
         if verify_password(password, hashed_pw):
+            # **登入成功後存入 Session**
+            st.session_state["username"] = username
+            st.session_state["user_role"] = role
             return role  # 登入成功，回傳使用者角色
-    
     return None  # 登入失敗
 
+
+USERROLE = {"KR": "🇰🇷 Korea Data Viewer", "CN": "🇨🇳 China Data Viewer", "Global": "🌍 Global Data Viewer"}
 
 # Loading the model of your choice
 llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
@@ -88,7 +93,7 @@ def main():
         st.session_state["user_role"] = user_role
 
     # Display the selected user role in the sidebar
-    st.sidebar.write(f"Current User Role: {user_role}")
+    st.sidebar.write(f"Current User Role: {USERROLE[user_role]}")
     st.sidebar.write(f"Current Page: {page}")
 
 
@@ -133,7 +138,7 @@ def main():
                 message(bot_msg, key=f"bot_{i}", avatar_style="thumbs")
 
         # **聊天輸入框**
-        user_input = st.chat_input(f"Start chatting as {user_role}...")
+        user_input = st.chat_input(f"Start chatting as {USERROLE[user_role]}...")
 
         if user_input:
         # **立即顯示 User Input 並先加上 ⏳ ...**
@@ -152,6 +157,7 @@ def main():
 
             # **刷新 UI 讓變更生效**
             st.rerun()
+
         # **滾動到底部標記**
         st.markdown("<div id='scroll-bottom'></div>", unsafe_allow_html=True)
 
@@ -171,9 +177,9 @@ def main():
 
         # **available companies based on user role**
         company_options = {
-            "🇰🇷 Korea Data Viewer": ["Samsung"],
-            "🇨🇳 China Data Viewer": ["Baidu", "Tencent"],
-            "🌍 Global Data Viewer": ["Amazon","AMD","Amkor","Apple","Applied Material","Baidu","Broadcom","Cirrus Logic","Google","Himax","Intel","KLA","Marvell","Microchip","Microsoft","Nvidia","ON Semi","Qorvo","Qualcomm","Samsung","STM","Tencent","Texas Instruments","TSMC","Western Digital"]
+            "KR": ["Samsung"],
+            "CN": ["Baidu", "Tencent"],
+            "Global": ["Amazon","AMD","Amkor","Apple","Applied Material","Baidu","Broadcom","Cirrus Logic","Google","Himax","Intel","KLA","Marvell","Microchip","Microsoft","Nvidia","ON Semi","Qorvo","Qualcomm","Samsung","STM","Tencent","Texas Instruments","TSMC","Western Digital"]
         }
         available_companies = company_options[user_role]
 
@@ -219,7 +225,7 @@ def login_or_signup():
 
     # 登入頁面
     if st.session_state.get("logged_in", False):
-        st.success(f"Welcome back, {st.session_state['username']}! Role: {st.session_state['user_role']}")
+        st.success(f"Welcome back, {st.session_state['username']}! Role: {USERROLE[st.session_state['user_role']]}")
         return
 
     username = st.text_input("Username", value=st.session_state.get("username", ""))
@@ -238,7 +244,7 @@ def login_or_signup():
     if login:
         role = authenticate_user(username, password)  # 查詢 SQL
         if role:
-            st.success(f"Welcome, {username}! Role: {role}")
+            st.success(f"Welcome, {username}! Role: {USERROLE[role]}")
             st.session_state["logged_in"] = True
             st.session_state["username"] = username
             st.session_state["user_role"] = role
@@ -254,9 +260,9 @@ def signup_page():
     access_token = st.text_input("Access Token", type="password")
 
     valid_tokens = {
-        "cn123": "🇨🇳 China Data Viewer",
-        "kr123": "🇰🇷 Korea Data Viewer",
-        "g123": "🌍 Global Data Viewer"
+        "cn123": "CN",
+        "kr123": "KR",
+        "g123": "Global"
     }
 
     col1, col2, col3 = st.columns([2, 1, 2])
