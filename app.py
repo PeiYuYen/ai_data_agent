@@ -4,20 +4,10 @@ from langchain.chat_models import init_chat_model
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from main import create_agent 
-
-
+from agent_modify import create_agent, AgentState
+from config import PROJECT_ID,REGION,BUCKET,BUCKET_URI,INDEX_ID,ENDPOINT_ID,DB_HOST,DB_PORT,DATABASE,_USER,_PASSWORD,MODEL_NAME,MODEL_PROVIDER, EMBEDDING_MODEL_NAME
 import psycopg2
 from sqlalchemy import create_engine
-PROJECT_ID = "tsmccareerhack2025-bsid-grp2"
-REGION = "us-central1"  
-INSTANCE = "sql-instance-relational"
-DATABASE = "postgres" 
-TABLE_NAME = "fin_data" 
-DB_HOST = "34.56.145.52"  # Cloud SQL Public IP
-DB_PORT = "5432"  # PostgreSQL 預設端口
-_USER = "postgres"
-_PASSWORD = "postgres"
 db_url = f'postgresql+psycopg2://{_USER}:{_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE}'
 engine = create_engine(db_url)
 
@@ -68,13 +58,21 @@ def authenticate_user(username, password):
 
 USERROLE = {"KR": "🇰🇷 Korea Data Viewer", "CN": "🇨🇳 China Data Viewer", "GB": "🌍 Global Data Viewer"}
 MODE = {"💬 Chat Mode":"Chat Mode", "📈 Report Mode":"Report Mode"}
-# Loading the model of your choice
-llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
+# # Loading the model of your choice
+# llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
 
 
 # 初始化 session_state 變數
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
+if "agent_state" not in st.session_state:
+    st.session_state.agent_state = AgentState(
+        query="",
+        adjusted_query="",
+        tools=[],
+        tool_results=[],
+        final_answer=""
+    )
 
 
 def main():
@@ -125,12 +123,18 @@ def main():
         # **處理等待中的 AI 回應**
         if st.session_state['waiting_for_response']:
             user_input = st.session_state['waiting_for_response']
-            
+            # 先更新 query
+            st.session_state.agent_state["query"] = user_input
+            # **執行 agent**
+            final_answer, end_state = agent.run(user_input, st.session_state.agent_state)
+            # **更新 `AgentState`**
+            st.session_state.agent_state.update(end_state)  # 直接用 `end_state` 覆蓋原本的 state
+            st.session_state.agent_state["final_answer"] = final_answer  # 確保 `final_answer` 也更新
             # **找到最後一筆 "⏳ ..." 並更新**
             for i in range(len(st.session_state['history']) - 1, -1, -1):
                 if st.session_state['history'][i]["content"] == "⏳ ...":
-                    response = agent.run(user_input).content
-                    st.session_state['history'][i] = {"role": "bot", "type": "text", "content": response}  # **直接替換 bot 的回應**
+                    
+                    st.session_state['history'][i] = {"role": "bot", "type": "text", "content": final_answer}  # **直接替換 bot 的回應**
                     # st.session_state['history'].append({"role": "bot", "type": "image", "content": img_url})  # **加入圖片**
                     st.session_state['waiting_for_response'] = None  # 清除等待狀態
                     st.rerun()  # 🔄 重新渲染頁面，讓 AI 回應顯示

@@ -13,23 +13,8 @@ from config import (PROJECT_ID, REGION, BUCKET, INDEX_ID,
                     ENDPOINT_ID, BUCKET_URI, 
                     MODEL_NAME, EMBEDDING_MODEL_NAME, MODEL_PROVIDER
                     )
+from IPython.display import Image, display
 
-def decide_tools(llm, query: str):
-    """根據 Query 選擇 SQL 或 RAG 工具"""
-    lower_q = query.lower()
-
-    prompt = USER_DECIDE_SEARCH_PROMPT.format(query=lower_q)
-
-    result = llm.invoke(prompt).content
-    start = result.find("{")
-    end = result.rfind("}") + 1
-    json_part = result[start:end]
-
-    # 手動解析
-    search_types = eval(json_part.split('"search_types":')[1].split("]")[0].strip().strip(":").strip() + "]")
-    print("Search Types:", search_types)
-
-    return search_types
 
 
 class AgentState(TypedDict):
@@ -41,8 +26,9 @@ class AgentState(TypedDict):
 
 
 class Agent:
-    def __init__(self, model, sql_tools, rag_tools, role):
-        self.role = role
+    def __init__(self, model, sql_tools, rag_tools, role, mode):
+        self.role = role #
+        self.mode = mode #
         self.model = model
         self.is_first = True
         self.is_FISCAL = None
@@ -54,8 +40,9 @@ class Agent:
         # LangGraph: 建立 StateGraph
         graph = StateGraph(state_schema=AgentState)
         graph.add_node("decide", self.start_chat)
+        graph.add_node("summarize", self.summarize)
         graph.add_node("adjust_sql_query", self.adjust_sql_query)  # ✅ 新增 SQL 調整 Node
-        graph.add_node("adjust_rag_query", self.adjust_rag_query)  # ✅ 新增 SQL 調整 Node
+        graph.add_node("adjust_rag_query", self.adjust_rag_query)  # ✅ 新增 RAG 調整 Node
         graph.add_node("sql_action", self.take_action_sql)
         graph.add_node("rag_action", self.take_action_rag)
         graph.add_node("action", self.take_action)
@@ -65,7 +52,8 @@ class Agent:
         # 設定決策流程
         graph.add_conditional_edges(
             "decide",
-            lambda state: "end" if self.is_end
+            lambda state: "summarize" if self.mode == "summarize" 
+                    else "end" if self.is_end
                     else "adjust_sql_query" if (self.is_sql_query(state) or self.is_rag_query(state)) 
                     else "action"
         )
@@ -79,10 +67,19 @@ class Agent:
         graph.set_entry_point("decide")
         memory = MemorySaver()
         self.graph = graph.compile(checkpointer=memory)
+        try:
+            display(Image(graph.get_graph().draw_mermaid_png()))
+        except Exception:
+            # This requires some extra dependencies and is optional
+            pass
 
     def start_chat(self, state: AgentState) -> AgentState:
         """決定應該使用哪些工具"""
-        if not self.is_first:
+        print("In Start Chat")
+        if self.mode == "summarize": # 第一層判斷 chat mode or summarize mode
+            return state
+
+        if not self.is_first: # 第二層判斷是否新的一輪開始
             query = state["query"] + "\n" +  state["adjusted_query"]   ## 幫確認
         else:
             query = state["query"]
@@ -128,6 +125,19 @@ class Agent:
         
         return state
     
+    def summarize(self, state: AgentState) -> AgentState:
+        """將 tools 查詢結果與 user 問題整合，再交給 LLM 重新回答"""
+        print("In Summarize")
+        query = state["query"]
+        tool_results = "\n".join(state["tool_results"])
+
+        prompt = FINAL_GENERATE_PROMPT.format(query=query, tool_results=tool_results)
+        # print('final round query:', prompt)
+        
+        final_answer = self.model.invoke(prompt)
+        state["final_answer"] = final_answer.content
+        return state
+
     def is_sql_query(self, state: AgentState) -> bool:
         """檢查是否需要 Call SQL tool 調整"""
         return "sql_db_query" in state["tools"]
@@ -138,6 +148,7 @@ class Agent:
 
     def adjust_sql_query(self, state: AgentState) -> AgentState:
         """調整 SQL Query，使其更加明確"""
+        print("In Adjust SQL Query")
         if not self.is_sql_query(state):
             return state
         
@@ -150,6 +161,7 @@ class Agent:
 
     def adjust_rag_query(self, state: AgentState) -> AgentState:
         """調整 RAG Query，使其更加明確"""
+        print("In Adjust RAG Query")
         if not self.is_rag_query(state):
             return state
         
@@ -170,6 +182,7 @@ class Agent:
 
     def take_action_sql(self, state: AgentState) -> AgentState:
         """執行查詢工具"""
+        print("In Take Action SQL")
         if not self.is_sql_query(state):
             return state
         
@@ -190,6 +203,7 @@ class Agent:
     
     def take_action_rag(self, state: AgentState) -> AgentState:
         """執行查詢工具"""
+        print("In Take Action RAG")
         if not self.is_rag_query(state):
             return state
         
@@ -212,6 +226,7 @@ class Agent:
     
     def take_action(self, state: AgentState) -> AgentState:
         """執行查詢工具"""
+        print("In Take Action")
         query = state["query"]
         prompt = INVALID_QUERY_PROMPT.format(query=query)
 
@@ -225,6 +240,10 @@ class Agent:
 
     def generate_final_response(self, state: AgentState) -> AgentState:
         """將 tools 查詢結果與 user 問題整合，再交給 LLM 重新回答"""
+        print("In Generate Final Response")
+
+        self.is_first = True # 重置狀態
+
         query = state["query"]
         tool_results = "\n".join(state["tool_results"])
 
@@ -238,11 +257,13 @@ class Agent:
 
     def run(self, query: str, state: AgentState):
         """對外的介面，餵入 query 後跑 graph，回傳最後 response"""
-        if state:
+        print("In Run")
+        if state is None:
             state: AgentState = {"query": query, "tools": [], "tool_results": [], "final_answer": ""}
         state["query"] = query
+        #print("Updated AgentState =", state) 
         end_state = self.graph.invoke(state, config={"configurable": {"thread_id": "unique_thread_id"}})
-
+        #print("Final AgentState =", end_state) 
         return end_state["final_answer"], end_state
 
 llm = init_chat_model(MODEL_NAME, model_provider=MODEL_PROVIDER)
@@ -250,8 +271,10 @@ llm = init_chat_model(MODEL_NAME, model_provider=MODEL_PROVIDER)
 sql_tool = get_sql_tools()
 rag_tool = get_rag_tools()
 print("SQL Tools:", sql_tool, "\nRAG Tools:", rag_tool)
-agent = Agent(model=llm, sql_tools=sql_tool, rag_tools=rag_tool, role="user")
-
+# 新增create_agent函數讓 app.py 可以使用    
+def create_agent(role, mode):
+    #print(role, mode)
+    return Agent(model=llm, sql_tools=sql_tool, rag_tools=rag_tool, role=role, mode=mode) 
 if __name__ == "__main__":
     # 建立 Agent 物件
     # llm = init_chat_model(MODEL_NAME, model_provider=MODEL_PROVIDER)
