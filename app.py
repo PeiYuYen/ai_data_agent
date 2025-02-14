@@ -72,6 +72,11 @@ USERROLE = {"KR": "🇰🇷 Korea Data Viewer", "CN": "🇨🇳 China Data Viewe
 llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
 
 
+# 初始化 session_state 變數
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+
 def main():
     st.title("📊 App")
 
@@ -82,20 +87,19 @@ def main():
     st.sidebar.title(f"👋 Welcome! **{username}**")
     page = st.sidebar.radio("Select operating mode", ["💬 Chat Mode", "📈 Report Mode"])
 
-    # Reset session state when role changes
-    if 'previous_role' not in st.session_state or st.session_state['previous_role'] != user_role:
-        temp_logged_in = st.session_state.get("logged_in", False)
-        temp_username = st.session_state.get("username", "")
-        st.session_state.clear()  # 清除 session，但登入狀態要還原
-        st.session_state['previous_role'] = user_role
-        st.session_state["logged_in"] = temp_logged_in
-        st.session_state["username"] = temp_username
-        st.session_state["user_role"] = user_role
+    # # Reset session state when role changes
+    # if 'previous_role' not in st.session_state or st.session_state['previous_role'] != user_role:
+    #     temp_logged_in = st.session_state.get("logged_in", False)
+    #     temp_username = st.session_state.get("username", "")
+    #     st.session_state.clear()  # 清除 session，但登入狀態要還原
+    #     st.session_state['previous_role'] = user_role
+    #     st.session_state["logged_in"] = temp_logged_in
+    #     st.session_state["username"] = temp_username
+    #     st.session_state["user_role"] = user_role
 
     # Display the selected user role in the sidebar
     st.sidebar.write(f"Current User Role: {USERROLE[user_role]}")
     st.sidebar.write(f"Current Page: {page}")
-
 
 
     if page == "💬 Chat Mode":
@@ -145,12 +149,11 @@ def main():
         # **聊天輸入框**
         user_input = st.chat_input(f"Start chatting as {USERROLE[user_role]}...")
 
-        if user_input:
-            if st.session_state['waiting_for_response'] is None:  # 只有在沒有等待中的回應時才加入新訊息
+        if user_input and st.session_state['waiting_for_response'] is None:  # 只有在沒有等待中的回應時才加入新訊息
                 st.session_state['history'].append({"role": "user", "type": "text", "content": user_input})  # 顯示使用者輸入
                 st.session_state['history'].append({"role": "bot", "type": "text", "content": "⏳ ..."})  # 顯示等待中的訊息
                 st.session_state['waiting_for_response'] = user_input  # 標記等待 AI 回應
-            st.rerun()
+                st.rerun()
 
         # **滾動到底部標記**
         st.markdown("<div id='scroll-bottom'></div>", unsafe_allow_html=True)
@@ -228,23 +231,20 @@ def login_or_signup():
     col1, col2, col3 = st.columns([1, 3, 1])  # 左中右三欄
 
     with col3:
-        login = st.button("Login", use_container_width=True)
-
+        if st.button("Login", use_container_width=True):
+            role = authenticate_user(username, password)
+            if role:
+                st.success(f"Welcome, {username}! Role: {USERROLE[role]}")
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.session_state["user_role"] = role
+                st.rerun()
+            else:
+                st.error("Invalid credentials. Please try again.")
     with col1:
         if st.button("Create Account"):
-            st.session_state["signup_mode"] = True  # 切換到註冊頁面
-            st.rerun()  # 重新載入頁面
-
-    if login:
-        role = authenticate_user(username, password)  # 查詢 SQL
-        if role:
-            st.success(f"Welcome, {username}! Role: {USERROLE[role]}")
-            st.session_state["logged_in"] = True
-            st.session_state["username"] = username
-            st.session_state["user_role"] = role
+            st.session_state["signup_mode"] = True
             st.rerun()
-        else:
-            st.error("Invalid credentials. Please try again.")
 
 def signup_page():
     st.write("### 📝 Create an Account")
@@ -285,10 +285,7 @@ def signup_page():
 
 
 if __name__ == "__main__":
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = False
-
-    if st.session_state.get("logged_in", False):
+    if st.session_state["logged_in"]:
         main()
     else:
         login_or_signup()
