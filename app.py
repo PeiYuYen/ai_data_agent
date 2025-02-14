@@ -66,7 +66,7 @@ def authenticate_user(username, password):
     return None  # 登入失敗
 
 
-USERROLE = {"KR": "🇰🇷 Korea Data Viewer", "CN": "🇨🇳 China Data Viewer", "Global": "🌍 Global Data Viewer"}
+USERROLE = {"KR": "🇰🇷 Korea Data Viewer", "CN": "🇨🇳 China Data Viewer", "GB": "🌍 Global Data Viewer"}
 
 # Loading the model of your choice
 llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
@@ -179,7 +179,7 @@ def main():
         company_options = {
             "KR": ["Samsung"],
             "CN": ["Baidu", "Tencent"],
-            "Global": ["Amazon","AMD","Amkor","Apple","Applied Material","Baidu","Broadcom","Cirrus Logic","Google","Himax","Intel","KLA","Marvell","Microchip","Microsoft","Nvidia","ON Semi","Qorvo","Qualcomm","Samsung","STM","Tencent","Texas Instruments","TSMC","Western Digital"]
+            "GB": ["Amazon","AMD","Amkor","Apple","Applied Material","Baidu","Broadcom","Cirrus Logic","Google","Himax","Intel","KLA","Marvell","Microchip","Microsoft","Nvidia","ON Semi","Qorvo","Qualcomm","Samsung","STM","Tencent","Texas Instruments","TSMC","Western Digital"]
         }
         available_companies = company_options[user_role]
 
@@ -262,7 +262,7 @@ def signup_page():
     valid_tokens = {
         "cn123": "CN",
         "kr123": "KR",
-        "g123": "Global"
+        "gb123": "GB"
     }
 
     col1, col2, col3 = st.columns([2, 1, 2])
@@ -285,7 +285,7 @@ def signup_page():
     ##### Access Tokens
     🇨🇳 China Data Viewer: `cn123`\n
     🇰🇷 Korea Data Viewer: `kr123`\n
-    🌍 Global Data Viewer: `g123`"""
+    🌍 Global Data Viewer: `gb123`"""
 )
 
 
