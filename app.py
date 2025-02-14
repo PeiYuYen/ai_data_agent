@@ -100,62 +100,56 @@ def main():
 
     if page == "💬 Chat Mode":
         st.subheader("💬 AI ChatBot query")
-        # Function for handling conversation with history
-        def conversational_chat(query):
-            history = "\n".join([f"User: {q}\nBot: {a}" for q, a in st.session_state['history']])
-            full_query = f"{history}\nUser: {query}\nBot:"
-            
-            response = agent.run(full_query).content  # 用 agent 來處理查詢
-            # **替換 ⏳ ... 為 AI 回應**
-            st.session_state['history'][-1] = (query, response)
-            return response
+
+        # def conversational_chat(query):
+        #     history = "\n".join([f"{entry['role']} ({entry['type']}): {entry['content']}" for entry in st.session_state['history']])
+        #     full_query = f"{history}\nUser: {query}\nBot:"   
+        #     return agent.run(full_query).content
 
         # Initialize session state
         if 'history' not in st.session_state:
             st.session_state['history'] = []
+        if 'waiting_for_response' not in st.session_state:
+            st.session_state['waiting_for_response'] = None  # 存放等待 AI 回應的訊息  
+
 
         message("Hello! How can I assist you today?", avatar_style="thumbs")
 
-        # Custom CSS to make the chat input box fixed at the bottom
-        st.markdown(
-            """
-            <style>
-            /* Try applying to more general Streamlit chat input elements */
-            .stTextInput, .stChatInput, .stTextArea { 
-                position: fixed; 
-                bottom: 0; 
-                z-index: 9999;
-            }
-            </style>
-            """, unsafe_allow_html=True
-        )
 
-        # Chat input using st.chat_input
+        # **顯示歷史對話**
         chat_container = st.container()
         with chat_container:
-            for i, (user_msg, bot_msg) in enumerate(st.session_state['history']):
-                message(user_msg, is_user=True, key=f"user_{i}")
-                message(bot_msg, key=f"bot_{i}", avatar_style="thumbs")
+            for i, entry in enumerate(st.session_state['history']):
+                if entry["role"] == "user" and entry["type"] == "text":
+                    message(entry["content"], is_user=True, key=f"user_{i}")
+                elif entry["role"] == "bot" and entry["type"] == "text":
+                    message(entry["content"], key=f"bot_{i}", avatar_style="thumbs")
+                elif entry["role"] == "bot" and entry["type"] == "image":
+                    img_html = f'<img src="{entry["content"]}" width="250"/>'
+                    message(img_html, key=f"img_{i}", allow_html=True, avatar_style="thumbs")  # **顯示圖片**
 
+
+        # **處理等待中的 AI 回應**
+        if st.session_state['waiting_for_response']:
+            user_input = st.session_state['waiting_for_response']
+            
+            # **找到最後一筆 "⏳ ..." 並更新**
+            for i in range(len(st.session_state['history']) - 1, -1, -1):
+                if st.session_state['history'][i]["content"] == "⏳ ...":
+                    response = agent.run(user_input).content
+                    st.session_state['history'][i] = {"role": "bot", "type": "text", "content": response}  # **直接替換 bot 的回應**
+                    # st.session_state['history'].append({"role": "bot", "type": "image", "content": img_url})  # **加入圖片**
+                    st.session_state['waiting_for_response'] = None  # 清除等待狀態
+                    st.rerun()  # 🔄 重新渲染頁面，讓 AI 回應顯示
+                    break
         # **聊天輸入框**
         user_input = st.chat_input(f"Start chatting as {USERROLE[user_role]}...")
 
         if user_input:
-        # **立即顯示 User Input 並先加上 ⏳ ...**
-            with chat_container:
-                message(user_input, is_user=True, key=f"user_{len(st.session_state['history'])}_new")
-                message("⏳ ...", key=f"bot_{len(st.session_state['history'])}_new", avatar_style="thumbs")
-
-            # **先存入 ⏳ ...，待 AI 回應後替換**
-            st.session_state['history'].append((user_input, "⏳ ..."))
-
-            # **異步處理 AI 回應**
-            bot_response = conversational_chat(user_input)  
-
-            # **更新 ⏳ ... 為 AI 回應**
-            st.session_state['history'][-1] = (user_input, bot_response)  # 取代最後一筆 "⏳ ..."
-
-            # **刷新 UI 讓變更生效**
+            if st.session_state['waiting_for_response'] is None:  # 只有在沒有等待中的回應時才加入新訊息
+                st.session_state['history'].append({"role": "user", "type": "text", "content": user_input})  # 顯示使用者輸入
+                st.session_state['history'].append({"role": "bot", "type": "text", "content": "⏳ ..."})  # 顯示等待中的訊息
+                st.session_state['waiting_for_response'] = user_input  # 標記等待 AI 回應
             st.rerun()
 
         # **滾動到底部標記**
