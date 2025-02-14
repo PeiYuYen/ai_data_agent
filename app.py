@@ -4,7 +4,7 @@ from langchain.chat_models import init_chat_model
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from main import agent
+from main import create_agent 
 
 
 import psycopg2
@@ -67,7 +67,7 @@ def authenticate_user(username, password):
 
 
 USERROLE = {"KR": "🇰🇷 Korea Data Viewer", "CN": "🇨🇳 China Data Viewer", "GB": "🌍 Global Data Viewer"}
-
+MODE = {"💬 Chat Mode":"Chat Mode", "📈 Report Mode":"Report Mode"}
 # Loading the model of your choice
 llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
 
@@ -83,39 +83,28 @@ def main():
     # Sidebar for selecting user role
     user_role = st.session_state.get("user_role", "🇰🇷 Korea Data Viewer")  # 若未設置則給予預設值
     username = st.session_state.get("username", "Guest")
+    
 
+    
     st.sidebar.title(f"👋 Welcome! **{username}**")
     page = st.sidebar.radio("Select operating mode", ["💬 Chat Mode", "📈 Report Mode"])
 
-    # # Reset session state when role changes
-    # if 'previous_role' not in st.session_state or st.session_state['previous_role'] != user_role:
-    #     temp_logged_in = st.session_state.get("logged_in", False)
-    #     temp_username = st.session_state.get("username", "")
-    #     st.session_state.clear()  # 清除 session，但登入狀態要還原
-    #     st.session_state['previous_role'] = user_role
-    #     st.session_state["logged_in"] = temp_logged_in
-    #     st.session_state["username"] = temp_username
-    #     st.session_state["user_role"] = user_role
-
+    
     # Display the selected user role in the sidebar
     st.sidebar.write(f"Current User Role: {USERROLE[user_role]}")
     st.sidebar.write(f"Current Page: {page}")
 
-
     if page == "💬 Chat Mode":
         st.subheader("💬 AI ChatBot query")
-
-        # def conversational_chat(query):
-        #     history = "\n".join([f"{entry['role']} ({entry['type']}): {entry['content']}" for entry in st.session_state['history']])
-        #     full_query = f"{history}\nUser: {query}\nBot:"   
-        #     return agent.run(full_query).content
-
+        st.session_state["mode"] = MODE[page]  # 確保 session_state 更新
+        mode = st.session_state.get("mode", "Chat Mode")  # 預設為 Chat Mode
         # Initialize session state
         if 'history' not in st.session_state:
             st.session_state['history'] = []
         if 'waiting_for_response' not in st.session_state:
             st.session_state['waiting_for_response'] = None  # 存放等待 AI 回應的訊息  
-
+        # 初始化 Agent
+        agent = create_agent(role=user_role, mode=mode)
 
         message("Hello! How can I assist you today?", avatar_style="thumbs")
 

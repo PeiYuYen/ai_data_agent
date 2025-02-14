@@ -175,10 +175,12 @@ def decide_tools(query: str) -> List[str]:
     
 
 class Agent:
-    def __init__(self, model, sql_tools, rag_tools):
+    def __init__(self, model, sql_tools, rag_tools, role, mode):
         self.model = model
         self.tools = sql_tools + rag_tools  
         self.tool_dict = {t.name: t for t in self.tools}
+        self.role = role
+        self.mode = mode
 
         # LangGraph: 建立 StateGraph
         graph = StateGraph(state_schema=AgentState)
@@ -267,10 +269,21 @@ class Agent:
         end_state = self.graph.invoke(init_state)
         return end_state["final_answer"]
     
-agent = Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools)    
+
+# 新增create_agent函數讓 app.py 可以使用    
+def create_agent(role, mode):
+    # llm = init_chat_model("gemini-1.5-pro", model_provider="google_vertexai")
+    # sql_tools = [sql_tool]
+    # rag_tools = [rag_tool]
+    #print(role, mode)
+    return Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools, role=role, mode=mode) 
+
+# 確保 `Agent` 可以被外部匯入
+__all__ = ["Agent", "create_agent"]
+
 if __name__ == "__main__":
     # 建立 Agent 物件
-    # agent = Agent(model=llm, sql_tools=sql_tools, rag_tools=rag_tools)
+    agent = create_agent("GB", "Chat Mode")
 
     test_queries = [
         "What is Amazon's Revenue in 2022 Q1?",       # show 單一公司單一指標
